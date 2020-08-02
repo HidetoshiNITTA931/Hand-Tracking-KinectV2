@@ -23,9 +23,14 @@ public class ArmTrackingManager : MonoBehaviour
     public GameObject luminousManagerR;
     public GameObject luminousManagerL;
 
+    // Reactor
+    private ReacterController _reactorController;
+    public GameObject reactorController;
+
     // HandStat=Openを何フレームか見失っても続けるための定数
     private int noOpenCounterR = 0;
     private int noOpenCounterL = 0;
+    private int noOpenReactor = 0;
     private int CounterTh = 10;
 
     // Start is called before the first frame update
@@ -48,6 +53,7 @@ public class ArmTrackingManager : MonoBehaviour
         
         luminousManageR = luminousManagerR.GetComponent<LuminousManage>();
         luminousManageL = luminousManagerL.GetComponent<LuminousManage>();
+        _reactorController = reactorController.GetComponent<ReacterController>();
     }
 
     void LateUpdate()
@@ -76,21 +82,48 @@ public class ArmTrackingManager : MonoBehaviour
                     Windows.Kinect.Joint elbowRight = body.Joints[JointType.ElbowRight];
                     Windows.Kinect.Joint handLeft = body.Joints[JointType.HandLeft];
                     Windows.Kinect.Joint elbowLeft = body.Joints[JointType.ElbowLeft];
+                    Windows.Kinect.Joint shoulderLeft = body.Joints[JointType.ShoulderLeft];
+                    Windows.Kinect.Joint shoulderRight = body.Joints[JointType.ShoulderRight];
+                    Windows.Kinect.Joint spindShoulder = body.Joints[JointType.SpineShoulder];
+                    Windows.Kinect.Joint spindMid = body.Joints[JointType.SpineMid];
+                    // 画面上のポイントを取得する
                     Vector3 handR = GetVector3FromJoint(handRight);
                     Vector3 handL = GetVector3FromJoint(handLeft);
-
-                    // kinectの座標系はz標高がUnity座標系と逆なので-1をかける
-                    Vector3 directionR = GetElboToHand(elbowRight, handRight);
-                    directionR.z = directionR.z * -1;
-                    Vector3 directionL = GetElboToHand(elbowLeft, handLeft);
-                    directionL.z = directionL.z * -1;
-                    Debug.Log(body.HandRightState);
-
+                    Vector3 reactorPoint = (GetVector3FromJoint(spindShoulder) + GetVector3FromJoint(spindMid)) / 2;
+                    // 左手の方向
+                    Vector3 HandDirectionR = GetDirection(elbowRight, handRight);
+                    // 右手の方向
+                    Vector3 HandDirectionL = GetDirection(elbowLeft, handLeft);
+                    // リアクターの方向を取得する
+                    Vector3 MidToRight = GetDirection(spindMid, shoulderRight);
+                    Vector3 MidToLeft = GetDirection(spindMid, shoulderLeft);
+                    Vector3 ReacterDirection = Vector3.Cross(MidToRight, MidToLeft);
+                    
+                    // 時間経過を取得する
                     float ration = Time.deltaTime;
+                    // Reactor
+                    _reactorController.UpdatePosition(reactorPoint, ReacterDirection);
+                    // _reactorController.UpdateScale(MidToLeft.magnitude);
+                    if (body.HandRightState == HandState.Open || body.HandLeftState == HandState.Open)
+                    {
+                        _reactorController.Activate(ration);
+                    }
+                    else { 
+                        if (noOpenCounterR >= CounterTh)
+                        {
+                            _reactorController.DeActivate(ration);
+                            noOpenReactor = 0;
+                        }
+                        else
+                        {
+                            noOpenReactor += 1;
+                        }
+                    }
+                    
                     // Right hand
                     if (body.HandRightState == HandState.Open)
                     {
-                        luminousManageR.Attack(ration, handR, directionR);
+                        luminousManageR.Attack(ration, handR, HandDirectionR);
                         noOpenCounterR = 0;
                     }
                     else
@@ -108,7 +141,7 @@ public class ArmTrackingManager : MonoBehaviour
                     // Left hand
                     if (body.HandLeftState == HandState.Open)
                     {   
-                        luminousManageL.Attack(ration, handL, directionL);
+                        luminousManageL.Attack(ration, handL, HandDirectionL);
                         noOpenCounterL = 0;
                     }
                     else
@@ -162,12 +195,13 @@ public class ArmTrackingManager : MonoBehaviour
                             0);
     }
 
-    // 肘から手までのベクトルを計算する
-    private Vector3 GetElboToHand(Windows.Kinect.Joint elbow, Windows.Kinect.Joint hand)
+    // ベクトルを計算する
+    private Vector3 GetDirection(Windows.Kinect.Joint start, Windows.Kinect.Joint end)
     {
-        return new Vector3(hand.Position.X - elbow.Position.X, hand.Position.Y - elbow.Position.Y, hand.Position.Z - elbow.Position.Z);
+        // kinectの座標系はz座標がUnity座標系と逆なので-1をかける
+        Vector3 ElboToHand = new Vector3(end.Position.X - start.Position.X, end.Position.Y - start.Position.Y, end.Position.Z - start.Position.Z);
+        ElboToHand.z = ElboToHand.z * -1;
+        return ElboToHand;
     }
-
-    
 
 }
